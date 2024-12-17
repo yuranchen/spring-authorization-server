@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,13 +30,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.SecurityConfigurerAdapter;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.authorization.config.annotation.web.configurers.OAuth2AuthorizationServerConfigurer;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.util.matcher.RequestMatcher;
 
 /**
  * {@link Configuration} for OAuth 2.0 Authorization Server support.
@@ -51,26 +52,40 @@ public class OAuth2AuthorizationServerConfiguration {
 	@Bean
 	@Order(Ordered.HIGHEST_PRECEDENCE)
 	public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
-		applyDefaultSecurity(http);
+		// @formatter:off
+		OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
+				OAuth2AuthorizationServerConfigurer.authorizationServer();
+		http
+			.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
+			.with(authorizationServerConfigurer, Customizer.withDefaults())
+			.authorizeHttpRequests((authorize) ->
+				authorize.anyRequest().authenticated()
+			);
+		// @formatter:on
 		return http.build();
 	}
 
-	// @formatter:off
+	/**
+	 * @param http the {@link HttpSecurity}
+	 * @throws Exception if {@link OAuth2AuthorizationServerConfigurer} could not be
+	 * applied
+	 * @deprecated For removal in 2.0. Use
+	 * {@link HttpSecurity#with(SecurityConfigurerAdapter, Customizer)} and pass in
+	 * {@link OAuth2AuthorizationServerConfigurer#authorizationServer()}.
+	 */
+	@Deprecated(since = "1.4", forRemoval = true)
 	public static void applyDefaultSecurity(HttpSecurity http) throws Exception {
+		// @formatter:off
 		OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
-				new OAuth2AuthorizationServerConfigurer();
-		RequestMatcher endpointsMatcher = authorizationServerConfigurer
-				.getEndpointsMatcher();
-
+				OAuth2AuthorizationServerConfigurer.authorizationServer();
 		http
-			.securityMatcher(endpointsMatcher)
-			.authorizeHttpRequests(authorize ->
+			.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
+			.with(authorizationServerConfigurer, Customizer.withDefaults())
+			.authorizeHttpRequests((authorize) ->
 				authorize.anyRequest().authenticated()
-			)
-			.csrf(csrf -> csrf.ignoringRequestMatchers(endpointsMatcher))
-			.apply(authorizationServerConfigurer);
+			);
+		// @formatter:on
 	}
-	// @formatter:on
 
 	public static JwtDecoder jwtDecoder(JWKSource<SecurityContext> jwkSource) {
 		Set<JWSAlgorithm> jwsAlgs = new HashSet<>();
@@ -78,10 +93,10 @@ public class OAuth2AuthorizationServerConfiguration {
 		jwsAlgs.addAll(JWSAlgorithm.Family.EC);
 		jwsAlgs.addAll(JWSAlgorithm.Family.HMAC_SHA);
 		ConfigurableJWTProcessor<SecurityContext> jwtProcessor = new DefaultJWTProcessor<>();
-		JWSKeySelector<SecurityContext> jwsKeySelector =
-				new JWSVerificationKeySelector<>(jwsAlgs, jwkSource);
+		JWSKeySelector<SecurityContext> jwsKeySelector = new JWSVerificationKeySelector<>(jwsAlgs, jwkSource);
 		jwtProcessor.setJWSKeySelector(jwsKeySelector);
-		// Override the default Nimbus claims set verifier as NimbusJwtDecoder handles it instead
+		// Override the default Nimbus claims set verifier as NimbusJwtDecoder handles it
+		// instead
 		jwtProcessor.setJWTClaimsSetVerifier((claims, context) -> {
 		});
 		return new NimbusJwtDecoder(jwtProcessor);
@@ -90,7 +105,8 @@ public class OAuth2AuthorizationServerConfiguration {
 	@Bean
 	RegisterMissingBeanPostProcessor registerMissingBeanPostProcessor() {
 		RegisterMissingBeanPostProcessor postProcessor = new RegisterMissingBeanPostProcessor();
-		postProcessor.addBeanDefinition(AuthorizationServerSettings.class, () -> AuthorizationServerSettings.builder().build());
+		postProcessor.addBeanDefinition(AuthorizationServerSettings.class,
+				() -> AuthorizationServerSettings.builder().build());
 		return postProcessor;
 	}
 

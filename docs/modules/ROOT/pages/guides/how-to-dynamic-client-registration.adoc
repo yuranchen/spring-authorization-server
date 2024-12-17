@@ -24,6 +24,23 @@ include::{examples-dir}/main/java/sample/registration/SecurityConfig.java[]
 ----
 
 <1> Enable the xref:protocol-endpoints.adoc#oidc-client-registration-endpoint[OpenID Connect 1.0 Client Registration Endpoint] with the default configuration.
+<2> Optionally, customize the default ``AuthenticationProvider``'s to support custom client metadata parameters.
+
+In order to support custom client metadata parameters when registering a client, a few additional implementation details are required.
+
+The following example shows a sample implementation of ``Converter``'s that support custom client metadata parameters (`logo_uri` and `contacts`) and are configured in `OidcClientRegistrationAuthenticationProvider` and `OidcClientConfigurationAuthenticationProvider`.
+
+[[sample.CustomClientMetadataConfig]]
+[source,java]
+----
+include::{examples-dir}/main/java/sample/registration/CustomClientMetadataConfig.java[]
+----
+
+<1> Define a `Consumer<List<AuthenticationProvider>>` providing the ability to customize the default ``AuthenticationProvider``'s.
+<2> Define custom client metadata parameters that are supported for client registration.
+<3> Configure `OidcClientRegistrationAuthenticationProvider.setRegisteredClientConverter()` with a `CustomRegisteredClientConverter`.
+<4> Configure `OidcClientRegistrationAuthenticationProvider.setClientRegistrationConverter()` with a `CustomClientRegistrationConverter`.
+<5> Configure `OidcClientConfigurationAuthenticationProvider.setClientRegistrationConverter()` with a `CustomClientRegistrationConverter`.
 
 [[configure-client-registrar]]
 == Configure client registrar
@@ -89,8 +106,8 @@ After the client is registered, the access token is invalidated.
 include::{examples-dir}/main/java/sample/registration/ClientRegistrar.java[]
 ----
 
-<1> A minimal representation of a client registration request. You may add additional client metadata parameters as per https://openid.net/specs/openid-connect-registration-1_0.html#RegistrationRequest[Client Registration Request].
-<2> A minimal representation of a client registration response. You may add additional client metadata parameters as per https://openid.net/specs/openid-connect-registration-1_0.html#RegistrationResponse[Client Registration Response].
+<1> A minimal representation of a client registration request. You may add additional client metadata parameters as per https://openid.net/specs/openid-connect-registration-1_0.html#RegistrationRequest[Client Registration Request]. This example request contains custom client metadata parameters `logo_uri` and `contacts`.
+<2> A minimal representation of a client registration response. You may add additional client metadata parameters as per https://openid.net/specs/openid-connect-registration-1_0.html#RegistrationResponse[Client Registration Response]. This example response contains custom client metadata parameters `logo_uri` and `contacts`.
 <3> Example demonstrating client registration and client retrieval.
 <4> A sample client registration request object.
 <5> Register the client using the "initial" access token and client registration request object.

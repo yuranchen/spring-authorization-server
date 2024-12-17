@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,23 +27,27 @@ import org.springframework.security.web.authentication.AuthenticationConverter;
 import org.springframework.util.Assert;
 
 /**
- * An {@link AuthenticationConverter} that simply delegates to it's
- * internal {@code List} of {@link AuthenticationConverter}(s).
+ * An {@link AuthenticationConverter} that simply delegates to it's internal {@code List}
+ * of {@link AuthenticationConverter}(s).
  * <p>
  * Each {@link AuthenticationConverter} is given a chance to
- * {@link AuthenticationConverter#convert(HttpServletRequest)}
- * with the first {@code non-null} {@link Authentication} being returned.
+ * {@link AuthenticationConverter#convert(HttpServletRequest)} with the first
+ * {@code non-null} {@link Authentication} being returned.
  *
  * @author Joe Grandja
  * @since 0.0.2
  * @see AuthenticationConverter
+ * @deprecated For removal in 2.0. Use
+ * {@link org.springframework.security.web.authentication.DelegatingAuthenticationConverter}
  */
+@Deprecated(since = "1.4", forRemoval = true)
 public final class DelegatingAuthenticationConverter implements AuthenticationConverter {
+
 	private final List<AuthenticationConverter> converters;
 
 	/**
-	 * Constructs a {@code DelegatingAuthenticationConverter} using the provided parameters.
-	 *
+	 * Constructs a {@code DelegatingAuthenticationConverter} using the provided
+	 * parameters.
 	 * @param converters a {@code List} of {@link AuthenticationConverter}(s)
 	 */
 	public DelegatingAuthenticationConverter(List<AuthenticationConverter> converters) {
@@ -63,4 +67,5 @@ public final class DelegatingAuthenticationConverter implements AuthenticationCo
 		}
 		return null;
 	}
+
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.Principal;
 import java.util.Base64;
 import java.util.List;
+import java.util.function.Consumer;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -47,29 +48,38 @@ import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 /**
- * An {@link AuthenticationProvider} implementation for OpenID Connect 1.0 RP-Initiated Logout Endpoint.
+ * An {@link AuthenticationProvider} implementation for OpenID Connect 1.0 RP-Initiated
+ * Logout Endpoint.
  *
  * @author Joe Grandja
  * @since 1.1
  * @see RegisteredClientRepository
  * @see OAuth2AuthorizationService
  * @see SessionRegistry
- * @see <a href="https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout">2. RP-Initiated Logout</a>
+ * @see <a href="https://openid.net/specs/openid-connect-rpinitiated-1_0.html#RPLogout">2.
+ * RP-Initiated Logout</a>
  */
 public final class OidcLogoutAuthenticationProvider implements AuthenticationProvider {
-	private static final OAuth2TokenType ID_TOKEN_TOKEN_TYPE =
-			new OAuth2TokenType(OidcParameterNames.ID_TOKEN);
+
+	private static final OAuth2TokenType ID_TOKEN_TOKEN_TYPE = new OAuth2TokenType(OidcParameterNames.ID_TOKEN);
+
 	private final Log logger = LogFactory.getLog(getClass());
+
 	private final RegisteredClientRepository registeredClientRepository;
+
 	private final OAuth2AuthorizationService authorizationService;
+
 	private final SessionRegistry sessionRegistry;
 
+	private Consumer<OidcLogoutAuthenticationContext> authenticationValidator = new OidcLogoutAuthenticationValidator();
+
 	/**
-	 * Constructs an {@code OidcLogoutAuthenticationProvider} using the provided parameters.
-	 *
+	 * Constructs an {@code OidcLogoutAuthenticationProvider} using the provided
+	 * parameters.
 	 * @param registeredClientRepository the repository of registered clients
 	 * @param authorizationService the authorization service
-	 * @param sessionRegistry the {@link SessionRegistry} used to track OpenID Connect sessions
+	 * @param sessionRegistry the {@link SessionRegistry} used to track OpenID Connect
+	 * sessions
 	 */
 	public OidcLogoutAuthenticationProvider(RegisteredClientRepository registeredClientRepository,
 			OAuth2AuthorizationService authorizationService, SessionRegistry sessionRegistry) {
@@ -83,11 +93,10 @@ public final class OidcLogoutAuthenticationProvider implements AuthenticationPro
 
 	@Override
 	public Authentication authenticate(Authentication authentication) throws AuthenticationException {
-		OidcLogoutAuthenticationToken oidcLogoutAuthentication =
-				(OidcLogoutAuthenticationToken) authentication;
+		OidcLogoutAuthenticationToken oidcLogoutAuthentication = (OidcLogoutAuthenticationToken) authentication;
 
-		OAuth2Authorization authorization = this.authorizationService.findByToken(
-				oidcLogoutAuthentication.getIdTokenHint(), ID_TOKEN_TOKEN_TYPE);
+		OAuth2Authorization authorization = this.authorizationService
+			.findByToken(oidcLogoutAuthentication.getIdTokenHint(), ID_TOKEN_TOKEN_TYPE);
 		if (authorization == null) {
 			throwError(OAuth2ErrorCodes.INVALID_TOKEN, "id_token_hint");
 		}
@@ -97,12 +106,13 @@ public final class OidcLogoutAuthenticationProvider implements AuthenticationPro
 		}
 
 		OAuth2Authorization.Token<OidcIdToken> authorizedIdToken = authorization.getToken(OidcIdToken.class);
-		if (!authorizedIdToken.isActive()) {
+		if (authorizedIdToken.isInvalidated() || authorizedIdToken.isBeforeUse()) {
+			// Expired ID Token should be accepted
 			throwError(OAuth2ErrorCodes.INVALID_TOKEN, "id_token_hint");
 		}
 
-		RegisteredClient registeredClient = this.registeredClientRepository.findById(
-				authorization.getRegisteredClientId());
+		RegisteredClient registeredClient = this.registeredClientRepository
+			.findById(authorization.getRegisteredClientId());
 
 		if (this.logger.isTraceEnabled()) {
 			this.logger.trace("Retrieved registered client");
@@ -112,18 +122,18 @@ public final class OidcLogoutAuthenticationProvider implements AuthenticationPro
 
 		// Validate client identity
 		List<String> audClaim = idToken.getAudience();
-		if (CollectionUtils.isEmpty(audClaim) ||
-				!audClaim.contains(registeredClient.getClientId())) {
+		if (CollectionUtils.isEmpty(audClaim) || !audClaim.contains(registeredClient.getClientId())) {
 			throwError(OAuth2ErrorCodes.INVALID_TOKEN, IdTokenClaimNames.AUD);
 		}
-		if (StringUtils.hasText(oidcLogoutAuthentication.getClientId()) &&
-				!oidcLogoutAuthentication.getClientId().equals(registeredClient.getClientId())) {
+		if (StringUtils.hasText(oidcLogoutAuthentication.getClientId())
+				&& !oidcLogoutAuthentication.getClientId().equals(registeredClient.getClientId())) {
 			throwError(OAuth2ErrorCodes.INVALID_REQUEST, OAuth2ParameterNames.CLIENT_ID);
 		}
-		if (StringUtils.hasText(oidcLogoutAuthentication.getPostLogoutRedirectUri()) &&
-				!registeredClient.getPostLogoutRedirectUris().contains(oidcLogoutAuthentication.getPostLogoutRedirectUri())) {
-			throwError(OAuth2ErrorCodes.INVALID_REQUEST, "post_logout_redirect_uri");
-		}
+
+		OidcLogoutAuthenticationContext context = OidcLogoutAuthenticationContext.with(oidcLogoutAuthentication)
+			.registeredClient(registeredClient)
+			.build();
+		this.authenticationValidator.accept(context);
 
 		if (this.logger.isTraceEnabled()) {
 			this.logger.trace("Validated logout request parameters");
@@ -133,28 +143,28 @@ public final class OidcLogoutAuthenticationProvider implements AuthenticationPro
 		if (oidcLogoutAuthentication.isPrincipalAuthenticated()) {
 			Authentication currentUserPrincipal = (Authentication) oidcLogoutAuthentication.getPrincipal();
 			Authentication authorizedUserPrincipal = authorization.getAttribute(Principal.class.getName());
-			if (!StringUtils.hasText(idToken.getSubject()) ||
-					!currentUserPrincipal.getName().equals(authorizedUserPrincipal.getName())) {
+			if (!StringUtils.hasText(idToken.getSubject())
+					|| !currentUserPrincipal.getName().equals(authorizedUserPrincipal.getName())) {
 				throwError(OAuth2ErrorCodes.INVALID_TOKEN, IdTokenClaimNames.SUB);
 			}
 
 			// Check for active session
 			if (StringUtils.hasText(oidcLogoutAuthentication.getSessionId())) {
-				SessionInformation sessionInformation = findSessionInformation(
-						currentUserPrincipal, oidcLogoutAuthentication.getSessionId());
+				SessionInformation sessionInformation = findSessionInformation(currentUserPrincipal,
+						oidcLogoutAuthentication.getSessionId());
 				if (sessionInformation != null) {
 					String sessionIdHash;
 					try {
 						sessionIdHash = createHash(sessionInformation.getSessionId());
-					} catch (NoSuchAlgorithmException ex) {
+					}
+					catch (NoSuchAlgorithmException ex) {
 						OAuth2Error error = new OAuth2Error(OAuth2ErrorCodes.SERVER_ERROR,
 								"Failed to compute hash for Session ID.", null);
 						throw new OAuth2AuthenticationException(error);
 					}
 
 					String sidClaim = idToken.getClaim("sid");
-					if (!StringUtils.hasText(sidClaim) ||
-							!sidClaim.equals(sessionIdHash)) {
+					if (!StringUtils.hasText(sidClaim) || !sidClaim.equals(sessionIdHash)) {
 						throwError(OAuth2ErrorCodes.INVALID_TOKEN, "sid");
 					}
 				}
@@ -175,6 +185,26 @@ public final class OidcLogoutAuthenticationProvider implements AuthenticationPro
 		return OidcLogoutAuthenticationToken.class.isAssignableFrom(authentication);
 	}
 
+	/**
+	 * Sets the {@code Consumer} providing access to the
+	 * {@link OidcLogoutAuthenticationContext} and is responsible for validating specific
+	 * OpenID Connect RP-Initiated Logout Request parameters associated in the
+	 * {@link OidcLogoutAuthenticationToken}. The default authentication validator is
+	 * {@link OidcLogoutAuthenticationValidator}.
+	 *
+	 * <p>
+	 * <b>NOTE:</b> The authentication validator MUST throw
+	 * {@link OAuth2AuthenticationException} if validation fails.
+	 * @param authenticationValidator the {@code Consumer} providing access to the
+	 * {@link OidcLogoutAuthenticationContext} and is responsible for validating specific
+	 * OpenID Connect RP-Initiated Logout Request parameters
+	 * @since 1.4
+	 */
+	public void setAuthenticationValidator(Consumer<OidcLogoutAuthenticationContext> authenticationValidator) {
+		Assert.notNull(authenticationValidator, "authenticationValidator cannot be null");
+		this.authenticationValidator = authenticationValidator;
+	}
+
 	private SessionInformation findSessionInformation(Authentication principal, String sessionId) {
 		List<SessionInformation> sessions = this.sessionRegistry.getAllSessions(principal.getPrincipal(), true);
 		SessionInformation sessionInformation = null;
@@ -190,9 +220,7 @@ public final class OidcLogoutAuthenticationProvider implements AuthenticationPro
 	}
 
 	private static void throwError(String errorCode, String parameterName) {
-		OAuth2Error error = new OAuth2Error(
-				errorCode,
-				"OpenID Connect 1.0 Logout Request Parameter: " + parameterName,
+		OAuth2Error error = new OAuth2Error(errorCode, "OpenID Connect 1.0 Logout Request Parameter: " + parameterName,
 				"https://openid.net/specs/openid-connect-rpinitiated-1_0.html#ValidationAndErrorHandling");
 		throw new OAuth2AuthenticationException(error);
 	}
@@ -202,4 +230,5 @@ public final class OidcLogoutAuthenticationProvider implements AuthenticationPro
 		byte[] digest = md.digest(value.getBytes(StandardCharsets.US_ASCII));
 		return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
 	}
+
 }

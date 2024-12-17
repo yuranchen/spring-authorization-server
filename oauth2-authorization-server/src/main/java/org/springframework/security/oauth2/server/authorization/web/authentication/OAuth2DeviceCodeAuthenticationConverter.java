@@ -33,10 +33,10 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.util.StringUtils;
 
 /**
- * Attempts to extract a Device Access Token Request from {@link HttpServletRequest} for the
- * OAuth 2.0 Device Authorization Grant and then converts it to an
- * {@link OAuth2DeviceCodeAuthenticationToken} used for authenticating the
- * authorization grant.
+ * Attempts to extract a Device Access Token Request from {@link HttpServletRequest} for
+ * the OAuth 2.0 Device Authorization Grant and then converts it to an
+ * {@link OAuth2DeviceCodeAuthenticationToken} used for authenticating the authorization
+ * grant.
  *
  * @author Steve Riesenberg
  * @since 1.1
@@ -49,31 +49,27 @@ public final class OAuth2DeviceCodeAuthenticationConverter implements Authentica
 	@Nullable
 	@Override
 	public Authentication convert(HttpServletRequest request) {
+		MultiValueMap<String, String> parameters = OAuth2EndpointUtils.getFormParameters(request);
+
 		// grant_type (REQUIRED)
-		String grantType = request.getParameter(OAuth2ParameterNames.GRANT_TYPE);
+		String grantType = parameters.getFirst(OAuth2ParameterNames.GRANT_TYPE);
 		if (!AuthorizationGrantType.DEVICE_CODE.getValue().equals(grantType)) {
 			return null;
 		}
 
 		Authentication clientPrincipal = SecurityContextHolder.getContext().getAuthentication();
 
-		MultiValueMap<String, String> parameters = OAuth2EndpointUtils.getParameters(request);
-
 		// device_code (REQUIRED)
 		String deviceCode = parameters.getFirst(OAuth2ParameterNames.DEVICE_CODE);
-		if (!StringUtils.hasText(deviceCode) ||
-				parameters.get(OAuth2ParameterNames.DEVICE_CODE).size() != 1) {
-			OAuth2EndpointUtils.throwError(
-					OAuth2ErrorCodes.INVALID_REQUEST,
-					OAuth2ParameterNames.DEVICE_CODE,
+		if (!StringUtils.hasText(deviceCode) || parameters.get(OAuth2ParameterNames.DEVICE_CODE).size() != 1) {
+			OAuth2EndpointUtils.throwError(OAuth2ErrorCodes.INVALID_REQUEST, OAuth2ParameterNames.DEVICE_CODE,
 					OAuth2EndpointUtils.ACCESS_TOKEN_REQUEST_ERROR_URI);
 		}
 
 		Map<String, Object> additionalParameters = new HashMap<>();
 		parameters.forEach((key, value) -> {
-			if (!key.equals(OAuth2ParameterNames.GRANT_TYPE) &&
-					!key.equals(OAuth2ParameterNames.CLIENT_ID) &&
-					!key.equals(OAuth2ParameterNames.DEVICE_CODE)) {
+			if (!key.equals(OAuth2ParameterNames.GRANT_TYPE) && !key.equals(OAuth2ParameterNames.CLIENT_ID)
+					&& !key.equals(OAuth2ParameterNames.DEVICE_CODE)) {
 				additionalParameters.put(key, (value.size() == 1) ? value.get(0) : value.toArray(new String[0]));
 			}
 		});

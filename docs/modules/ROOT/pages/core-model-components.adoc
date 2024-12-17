@@ -85,7 +85,7 @@ public class RegisteredClient implements Serializable {
 <5> `clientSecretExpiresAt`: The time at which the client secret expires.
 <6> `clientName`: A descriptive name used for the client. The name may be used in certain scenarios, such as when displaying the client name in the consent page.
 <7> `clientAuthenticationMethods`: The authentication method(s) that the client may use. The supported values are `client_secret_basic`, `client_secret_post`, https://datatracker.ietf.org/doc/html/rfc7523[`private_key_jwt`], `client_secret_jwt`, and `none` https://datatracker.ietf.org/doc/html/rfc7636[(public clients)].
-<8> `authorizationGrantTypes`: The https://datatracker.ietf.org/doc/html/rfc6749#section-1.3[authorization grant type(s)] that the client can use. The supported values are `authorization_code`, `client_credentials`, `refresh_token`, and `urn:ietf:params:oauth:grant-type:device_code`.
+<8> `authorizationGrantTypes`: The https://datatracker.ietf.org/doc/html/rfc6749#section-1.3[authorization grant type(s)] that the client can use. The supported values are `authorization_code`, `client_credentials`, `refresh_token`, `urn:ietf:params:oauth:grant-type:device_code`, and `urn:ietf:params:oauth:grant-type:token-exchange`.
 <9> `redirectUris`: The registered https://datatracker.ietf.org/doc/html/rfc6749#section-3.1.2[redirect URI(s)] that the client may use in redirect-based flows – for example, `authorization_code` grant.
 <10> `postLogoutRedirectUris`: The post logout redirect URI(s) that the client may use for logout.
 <11> `scopes`: The scope(s) that the client is allowed to request.
@@ -123,13 +123,15 @@ Alternatively, you can configure the `RegisteredClientRepository` through the xr
 @Bean
 public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
 	OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
-		new OAuth2AuthorizationServerConfigurer();
-	http.apply(authorizationServerConfigurer);
+			OAuth2AuthorizationServerConfigurer.authorizationServer();
 
-	authorizationServerConfigurer
-		.registeredClientRepository(registeredClientRepository);
-
-	...
+	http
+		.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
+		.with(authorizationServerConfigurer, (authorizationServer) ->
+			authorizationServer
+				.registeredClientRepository(registeredClientRepository)
+		)
+	    ...
 
 	return http.build();
 }
@@ -218,13 +220,15 @@ Alternatively, you can configure the `OAuth2AuthorizationService` through the xr
 @Bean
 public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
 	OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
-		new OAuth2AuthorizationServerConfigurer();
-	http.apply(authorizationServerConfigurer);
+			OAuth2AuthorizationServerConfigurer.authorizationServer();
 
-	authorizationServerConfigurer
-		.authorizationService(authorizationService);
-
-	...
+	http
+		.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
+		.with(authorizationServerConfigurer, (authorizationServer) ->
+			authorizationServer
+				.authorizationService(authorizationService)
+		)
+	    ...
 
 	return http.build();
 }
@@ -290,13 +294,15 @@ Alternatively, you can configure the `OAuth2AuthorizationConsentService` through
 @Bean
 public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
 	OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
-		new OAuth2AuthorizationServerConfigurer();
-	http.apply(authorizationServerConfigurer);
+			OAuth2AuthorizationServerConfigurer.authorizationServer();
 
-	authorizationServerConfigurer
-		.authorizationConsentService(authorizationConsentService);
-
-	...
+	http
+		.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
+		.with(authorizationServerConfigurer, (authorizationServer) ->
+			authorizationServer
+				.authorizationConsentService(authorizationConsentService)
+		)
+	    ...
 
 	return http.build();
 }
@@ -401,13 +407,15 @@ Alternatively, you can configure the `OAuth2TokenGenerator` through the xref:con
 @Bean
 public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
 	OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
-		new OAuth2AuthorizationServerConfigurer();
-	http.apply(authorizationServerConfigurer);
+			OAuth2AuthorizationServerConfigurer.authorizationServer();
 
-	authorizationServerConfigurer
-		.tokenGenerator(tokenGenerator);
-
-	...
+	http
+		.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
+		.with(authorizationServerConfigurer, (authorizationServer) ->
+			authorizationServer
+				.tokenGenerator(tokenGenerator)
+		)
+	    ...
 
 	return http.build();
 }
@@ -454,7 +462,7 @@ public OAuth2TokenCustomizer<OAuth2TokenClaimsContext> accessTokenCustomizer() {
 If the `OAuth2TokenGenerator` is not provided as a `@Bean` or is not configured through the `OAuth2AuthorizationServerConfigurer`, an `OAuth2TokenCustomizer<OAuth2TokenClaimsContext>` `@Bean` will automatically be configured with an `OAuth2AccessTokenGenerator`.
 
 An `OAuth2TokenCustomizer<JwtEncodingContext>` declared with a generic type of `JwtEncodingContext` (`implements OAuth2TokenContext`) provides the ability to customize the headers and claims of a `Jwt`.
-`JwtEncodingContext.getHeaders()` provides access to the `JwsHeader.Builder`, allowing the ability to add, replace, and remove headers.
+`JwtEncodingContext.getJwsHeader()` provides access to the `JwsHeader.Builder`, allowing the ability to add, replace, and remove headers.
 `JwtEncodingContext.getClaims()` provides access to the `JwtClaimsSet.Builder`, allowing the ability to add, replace, and remove claims.
 
 The following example shows how to implement an `OAuth2TokenCustomizer<JwtEncodingContext>` and configure it with a `JwtGenerator`:
@@ -475,7 +483,7 @@ public OAuth2TokenGenerator<?> tokenGenerator() {
 @Bean
 public OAuth2TokenCustomizer<JwtEncodingContext> jwtCustomizer() {
 	return context -> {
-		JwsHeader.Builder headers = context.getHeaders();
+		JwsHeader.Builder headers = context.getJwsHeader();
 		JwtClaimsSet.Builder claims = context.getClaims();
 		if (context.getTokenType().equals(OAuth2TokenType.ACCESS_TOKEN)) {
 			// Customize headers/claims for access_token

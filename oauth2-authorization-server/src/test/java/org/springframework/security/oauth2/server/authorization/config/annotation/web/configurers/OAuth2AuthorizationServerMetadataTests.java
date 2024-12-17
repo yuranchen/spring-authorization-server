@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,7 +49,6 @@ import org.springframework.security.oauth2.server.authorization.settings.Authori
 import org.springframework.security.oauth2.server.authorization.test.SpringTestContext;
 import org.springframework.security.oauth2.server.authorization.test.SpringTestContextExtension;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.hamcrest.CoreMatchers.hasItems;
@@ -64,9 +63,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @ExtendWith(SpringTestContextExtension.class)
 public class OAuth2AuthorizationServerMetadataTests {
+
 	private static final String DEFAULT_OAUTH2_AUTHORIZATION_SERVER_METADATA_ENDPOINT_URI = "/.well-known/oauth-authorization-server";
-	private static final String issuerUrl = "https://example.com/issuer1";
+
+	private static final String ISSUER = "https://example.com";
+
 	private static EmbeddedDatabase db;
+
 	private static JWKSource<SecurityContext> jwkSource;
 
 	public final SpringTestContext spring = new SpringTestContext();
@@ -81,19 +84,19 @@ public class OAuth2AuthorizationServerMetadataTests {
 	public static void setupClass() {
 		JWKSet jwkSet = new JWKSet(TestJwks.DEFAULT_RSA_JWK);
 		jwkSource = (jwkSelector, securityContext) -> jwkSelector.select(jwkSet);
-		db = new EmbeddedDatabaseBuilder()
-				.generateUniqueName(true)
-				.setType(EmbeddedDatabaseType.HSQL)
-				.setScriptEncoding("UTF-8")
-				.addScript("org/springframework/security/oauth2/server/authorization/oauth2-authorization-schema.sql")
-				.addScript("org/springframework/security/oauth2/server/authorization/client/oauth2-registered-client-schema.sql")
-				.build();
+		db = new EmbeddedDatabaseBuilder().generateUniqueName(true)
+			.setType(EmbeddedDatabaseType.HSQL)
+			.setScriptEncoding("UTF-8")
+			.addScript("org/springframework/security/oauth2/server/authorization/oauth2-authorization-schema.sql")
+			.addScript(
+					"org/springframework/security/oauth2/server/authorization/client/oauth2-registered-client-schema.sql")
+			.build();
 	}
 
 	@AfterEach
 	public void tearDown() {
-		jdbcOperations.update("truncate table oauth2_authorization");
-		jdbcOperations.update("truncate table oauth2_registered_client");
+		this.jdbcOperations.update("truncate table oauth2_authorization");
+		this.jdbcOperations.update("truncate table oauth2_registered_client");
 	}
 
 	@AfterAll
@@ -105,31 +108,51 @@ public class OAuth2AuthorizationServerMetadataTests {
 	public void requestWhenAuthorizationServerMetadataRequestAndIssuerSetThenUsed() throws Exception {
 		this.spring.register(AuthorizationServerConfiguration.class).autowire();
 
-		this.mvc.perform(get(DEFAULT_OAUTH2_AUTHORIZATION_SERVER_METADATA_ENDPOINT_URI))
-				.andExpect(status().is2xxSuccessful())
-				.andExpect(jsonPath("issuer").value(issuerUrl))
-				.andReturn();
+		this.mvc.perform(get(ISSUER.concat(DEFAULT_OAUTH2_AUTHORIZATION_SERVER_METADATA_ENDPOINT_URI)))
+			.andExpect(status().is2xxSuccessful())
+			.andExpect(jsonPath("issuer").value(ISSUER))
+			.andReturn();
 	}
 
 	@Test
-	public void requestWhenAuthorizationServerMetadataRequestAndIssuerNotSetThenResolveFromRequest() throws Exception {
-		this.spring.register(AuthorizationServerConfigurationWithIssuerNotSet.class).autowire();
+	public void requestWhenAuthorizationServerMetadataRequestIncludesIssuerPathThenMetadataResponseHasIssuerPath()
+			throws Exception {
+		this.spring.register(AuthorizationServerConfigurationWithMultipleIssuersAllowed.class).autowire();
 
-		this.mvc.perform(get(DEFAULT_OAUTH2_AUTHORIZATION_SERVER_METADATA_ENDPOINT_URI))
-				.andExpect(status().is2xxSuccessful())
-				.andExpect(jsonPath("issuer").value("http://localhost"))
-				.andReturn();
+		String host = "https://example.com:8443";
+
+		String issuerPath = "/issuer1";
+		String issuer = host.concat(issuerPath);
+		this.mvc.perform(get(host.concat(DEFAULT_OAUTH2_AUTHORIZATION_SERVER_METADATA_ENDPOINT_URI).concat(issuerPath)))
+			.andExpect(status().is2xxSuccessful())
+			.andExpect(jsonPath("issuer").value(issuer))
+			.andReturn();
+
+		issuerPath = "/path1/issuer2";
+		issuer = host.concat(issuerPath);
+		this.mvc.perform(get(host.concat(DEFAULT_OAUTH2_AUTHORIZATION_SERVER_METADATA_ENDPOINT_URI).concat(issuerPath)))
+			.andExpect(status().is2xxSuccessful())
+			.andExpect(jsonPath("issuer").value(issuer))
+			.andReturn();
+
+		issuerPath = "/path1/path2/issuer3";
+		issuer = host.concat(issuerPath);
+		this.mvc.perform(get(host.concat(DEFAULT_OAUTH2_AUTHORIZATION_SERVER_METADATA_ENDPOINT_URI).concat(issuerPath)))
+			.andExpect(status().is2xxSuccessful())
+			.andExpect(jsonPath("issuer").value(issuer))
+			.andReturn();
 	}
 
 	// gh-616
 	@Test
-	public void requestWhenAuthorizationServerMetadataRequestAndMetadataCustomizerSetThenReturnCustomMetadataResponse() throws Exception {
+	public void requestWhenAuthorizationServerMetadataRequestAndMetadataCustomizerSetThenReturnCustomMetadataResponse()
+			throws Exception {
 		this.spring.register(AuthorizationServerConfigurationWithMetadataCustomizer.class).autowire();
 
-		this.mvc.perform(get(DEFAULT_OAUTH2_AUTHORIZATION_SERVER_METADATA_ENDPOINT_URI))
-				.andExpect(status().is2xxSuccessful())
-				.andExpect(jsonPath(OAuth2AuthorizationServerMetadataClaimNames.SCOPES_SUPPORTED,
-						hasItems("scope1", "scope2")));
+		this.mvc.perform(get(ISSUER.concat(DEFAULT_OAUTH2_AUTHORIZATION_SERVER_METADATA_ENDPOINT_URI)))
+			.andExpect(status().is2xxSuccessful())
+			.andExpect(jsonPath(OAuth2AuthorizationServerMetadataClaimNames.SCOPES_SUPPORTED,
+					hasItems("scope1", "scope2")));
 	}
 
 	@EnableWebSecurity
@@ -139,7 +162,8 @@ public class OAuth2AuthorizationServerMetadataTests {
 		@Bean
 		RegisteredClientRepository registeredClientRepository(JdbcOperations jdbcOperations) {
 			RegisteredClient registeredClient = TestRegisteredClients.registeredClient().build();
-			JdbcRegisteredClientRepository registeredClientRepository = new JdbcRegisteredClientRepository(jdbcOperations);
+			JdbcRegisteredClientRepository registeredClientRepository = new JdbcRegisteredClientRepository(
+					jdbcOperations);
 			registeredClientRepository.save(registeredClient);
 			return registeredClientRepository;
 		}
@@ -156,8 +180,9 @@ public class OAuth2AuthorizationServerMetadataTests {
 
 		@Bean
 		AuthorizationServerSettings authorizationServerSettings() {
-			return AuthorizationServerSettings.builder().issuer(issuerUrl).build();
+			return AuthorizationServerSettings.builder().issuer(ISSUER).build();
 		}
+
 	}
 
 	@EnableWebSecurity
@@ -166,44 +191,39 @@ public class OAuth2AuthorizationServerMetadataTests {
 
 		// @formatter:off
 		@Bean
-		public SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
+		SecurityFilterChain authorizationServerSecurityFilterChain(HttpSecurity http) throws Exception {
 			OAuth2AuthorizationServerConfigurer authorizationServerConfigurer =
-					new OAuth2AuthorizationServerConfigurer();
-			http.apply(authorizationServerConfigurer);
-
-			authorizationServerConfigurer
-					.authorizationServerMetadataEndpoint(authorizationServerMetadataEndpoint ->
-							authorizationServerMetadataEndpoint
-									.authorizationServerMetadataCustomizer(authorizationServerMetadataCustomizer()));
-
-			RequestMatcher endpointsMatcher = authorizationServerConfigurer.getEndpointsMatcher();
-
+					OAuth2AuthorizationServerConfigurer.authorizationServer();
 			http
-					.securityMatcher(endpointsMatcher)
-					.authorizeHttpRequests(authorize ->
-							authorize.anyRequest().authenticated()
+					.securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
+					.with(authorizationServerConfigurer, (authorizationServer) ->
+							authorizationServer
+									.authorizationServerMetadataEndpoint((authorizationServerMetadataEndpoint) ->
+											authorizationServerMetadataEndpoint
+													.authorizationServerMetadataCustomizer(authorizationServerMetadataCustomizer()))
 					)
-					.csrf(csrf -> csrf.ignoringRequestMatchers(endpointsMatcher));
-
+					.authorizeHttpRequests((authorize) ->
+							authorize.anyRequest().authenticated()
+					);
 			return http.build();
 		}
 		// @formatter:on
 
 		private Consumer<OAuth2AuthorizationServerMetadata.Builder> authorizationServerMetadataCustomizer() {
-			return (authorizationServerMetadata) ->
-					authorizationServerMetadata.scope("scope1").scope("scope2");
+			return (authorizationServerMetadata) -> authorizationServerMetadata.scope("scope1").scope("scope2");
 		}
 
 	}
 
 	@EnableWebSecurity
 	@Import(OAuth2AuthorizationServerConfiguration.class)
-	static class AuthorizationServerConfigurationWithIssuerNotSet extends AuthorizationServerConfiguration {
+	static class AuthorizationServerConfigurationWithMultipleIssuersAllowed extends AuthorizationServerConfiguration {
 
 		@Bean
 		AuthorizationServerSettings authorizationServerSettings() {
-			return AuthorizationServerSettings.builder().build();
+			return AuthorizationServerSettings.builder().multipleIssuersAllowed(true).build();
 		}
+
 	}
 
 }

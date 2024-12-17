@@ -1,5 +1,5 @@
 /*
- * Copyright 2020-2023 the original author or authors.
+ * Copyright 2020-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,15 +35,20 @@ import org.springframework.util.Assert;
  * @see OAuth2DeviceVerificationAuthenticationProvider
  */
 public class OAuth2DeviceVerificationAuthenticationToken extends AbstractAuthenticationToken {
+
 	private static final long serialVersionUID = SpringAuthorizationServerVersion.SERIAL_VERSION_UID;
+
 	private final Authentication principal;
+
 	private final String userCode;
+
 	private final Map<String, Object> additionalParameters;
+
 	private final String clientId;
 
 	/**
-	 * Constructs an {@code OAuth2DeviceVerificationAuthenticationToken} using the provided parameters.
-	 *
+	 * Constructs an {@code OAuth2DeviceVerificationAuthenticationToken} using the
+	 * provided parameters.
 	 * @param principal the {@code Principal} (Resource Owner)
 	 * @param userCode the user code associated with the device authorization response
 	 * @param additionalParameters the additional parameters
@@ -56,15 +61,13 @@ public class OAuth2DeviceVerificationAuthenticationToken extends AbstractAuthent
 		this.principal = principal;
 		this.userCode = userCode;
 		this.additionalParameters = Collections.unmodifiableMap(
-				additionalParameters != null ?
-						new HashMap<>(additionalParameters) :
-						Collections.emptyMap());
+				(additionalParameters != null) ? new HashMap<>(additionalParameters) : Collections.emptyMap());
 		this.clientId = null;
 	}
 
 	/**
-	 * Constructs an {@code OAuth2DeviceVerificationAuthenticationToken} using the provided parameters.
-	 *
+	 * Constructs an {@code OAuth2DeviceVerificationAuthenticationToken} using the
+	 * provided parameters.
 	 * @param principal the {@code Principal} (Resource Owner)
 	 * @param userCode the user code associated with the device authorization response
 	 * @param clientId the client identifier
@@ -77,7 +80,7 @@ public class OAuth2DeviceVerificationAuthenticationToken extends AbstractAuthent
 		this.principal = principal;
 		this.userCode = userCode;
 		this.clientId = clientId;
-		this.additionalParameters = null;
+		this.additionalParameters = Collections.emptyMap();
 		setAuthenticated(true);
 	}
 
@@ -93,7 +96,6 @@ public class OAuth2DeviceVerificationAuthenticationToken extends AbstractAuthent
 
 	/**
 	 * Returns the user code.
-	 *
 	 * @return the user code
 	 */
 	public String getUserCode() {
@@ -102,7 +104,6 @@ public class OAuth2DeviceVerificationAuthenticationToken extends AbstractAuthent
 
 	/**
 	 * Returns the additional parameters.
-	 *
 	 * @return the additional parameters, or an empty {@code Map} if not available
 	 */
 	public Map<String, Object> getAdditionalParameters() {
@@ -111,7 +112,6 @@ public class OAuth2DeviceVerificationAuthenticationToken extends AbstractAuthent
 
 	/**
 	 * Returns the client identifier.
-	 *
 	 * @return the client identifier
 	 */
 	public String getClientId() {
